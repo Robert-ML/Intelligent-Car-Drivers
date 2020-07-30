@@ -1,5 +1,9 @@
 #include "./motor_interface.h"
 
+/*!
+ * Enables FTM0 and channels 0, 1, 2 and 4. Reinitialization of the FTM0 driver
+ * will result in undefined behaviour.
+ */
 Motors::Motors() {
 	if (motors_instance != NULL) {
 		return;
