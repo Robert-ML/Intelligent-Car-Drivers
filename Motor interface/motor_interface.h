@@ -76,11 +76,10 @@ public:
 	void stop_break();
 };
 
-
-
-#endif /* MOTOR_INTERFACE_H_ */
-
 /*******************************************************************************
  * Variables
  ******************************************************************************/
 static Motors* motors_instance = NULL;
+
+#endif /* MOTOR_INTERFACE_H_ */
+
