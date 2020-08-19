@@ -1,0 +1,7 @@
+ # | Peripheral |   Signal   | Route to |      Label      |    Identifier    |   Direction   | GPIO initial state | GPIO interrupt | Slew rate | Open drain | Drive strength | Pull select | Pull enable | Passive filter | Digital filter
+64 | FTM2       | CH, 0      | FTM2_CH0 | PWM_SV1         | PWM_SV1          | Not Specified | n/a                | n/a            | Fast      | Disabled   | Low            | Pulldown    | Disabled    | Disabled       | n/a
+65 | FTM2       | CH, 1      | FTM2_CH1 | PWM_SV2         | PWM_SV2          | Not Specified | n/a                | n/a            | Fast      | Disabled   | Low            | Pulldown    | Disabled    | Disabled       | n/a
+   |            |            |          |                 |                  |               |                    |                |           |            |                |             |             |                |
+   |            |            |          |                 |                  |               |                    |                |           |            |                |             |             |                |
+   |            |            |          |                 |                  |               |                    |                |           |            |                |             |             |                |
+   |            |            |          |                 |                  |               |                    |                |           |            |                |             |             |                |

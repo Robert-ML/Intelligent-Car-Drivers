@@ -1,15 +1,17 @@
 #include "./motor_interface.h"
 
-/*!
- * Enables FTM0 and channels 0, 1, 2 and 4. Reinitialization of the FTM0 driver
- * will result in undefined behaviour.
- */
-Motors::Motors() {
-	if (motors_instance != NULL) {
-		return;
-	}
+Motors* Motors::instance = NULL;
 
+Motors* Motors::get_instance() {
+	if (instance == NULL) {
+		instance = new Motors();
+	}
+	return instance;
+}
+
+Motors::Motors() {
 	pwm_level = kFTM_HighTrue;
+	pwm_mode = kFTM_EdgeAlignedPwm;
 
 	// parameters for MA_IN1
 	dutycycle_ma_in1 = 0U;
@@ -43,9 +45,10 @@ Motors::Motors() {
 	/* Initialize FTM module */
 	FTM_Init(MD_FTM_BASEADDR, &ftm_info);
 
-	FTM_SetupPwm(MD_FTM_BASEADDR, param_mx_inn, 4U, kFTM_CenterAlignedPwm, pwm_freq, FTM_SOURCE_CLOCK);
+	FTM_SetupPwm(MD_FTM_BASEADDR, param_mx_inn, 4U, pwm_mode, mot_pwm_freq, FTM_SOURCE_CLOCK);
 
 	FTM_StartTimer(MD_FTM_BASEADDR, kFTM_SystemClock);
+
 }
 
 /*!
@@ -73,15 +76,29 @@ void Motors::disable_outputs(uint8_t ma, uint8_t mb) {
  * param speed = the speed of the car (from -100 to 100), a negative value
  * 				 means the car is moving backwards
  *
- * The default direction is regarding to the skematik: for speed 100 we set
+ *  The default direction is regarding to the skematik: for speed 100 we set
  * the in1 to high (100% dc) and in2 to low (0% dc) and for speed -100 in
  * reverse.
+ *  A speed of 0 will connect the mottor leads through the down side of the
+ * H-bridge for acive breaking.
  */
 void Motors::set_speed(int8_t speed) {
 	if (speed < SPEED_MAX_REV) {
 		speed = SPEED_MAX_REV;
 	} else if (speed > SPEED_MAX) {
 		speed = SPEED_MAX;
+	}
+
+	this->speed = speed;
+
+	// transform from speed to duty cycle
+	if (speed > ZERO_DC) {
+		set_dutycycle_from_speed(speed, ZERO_DC, speed, ZERO_DC);
+	} else if (speed < ZERO_DC) {
+		speed = std::abs(speed);
+		set_dutycycle_from_speed(ZERO_DC, speed, ZERO_DC, speed);
+	} else { // speed == 0
+		set_dutycycle_from_speed(ZERO_DC, ZERO_DC, ZERO_DC, ZERO_DC);
 	}
 
 	/* Disable channel output before updating the dutycycle */
@@ -91,21 +108,12 @@ void Motors::set_speed(int8_t speed) {
 	FTM_UpdateChnlEdgeLevelSelect(MD_FTM_BASEADDR, MA_IN2_FTM_CHANNEL, kFTM_NoPwmSignal);
 
 	/* Update PWM duty cycle */
- #if MA_direction
-	FTM_UpdatePwmDutycycle(MD_FTM_BASEADDR, MA_IN1_FTM_CHANNEL, kFTM_CenterAlignedPwm, speed);
-	FTM_UpdatePwmDutycycle(MD_FTM_BASEADDR, MA_IN2_FTM_CHANNEL, kFTM_CenterAlignedPwm, ZERO_DC);
- #else
-	FTM_UpdatePwmDutycycle(MD_FTM_BASEADDR, MA_IN1_FTM_CHANNEL, kFTM_CenterAlignedPwm, ZERO_DC);
-	FTM_UpdatePwmDutycycle(MD_FTM_BASEADDR, MA_IN2_FTM_CHANNEL, kFTM_CenterAlignedPwm, speed);
- #endif
-
- #if MB_direction
-	FTM_UpdatePwmDutycycle(MD_FTM_BASEADDR, MB_IN1_FTM_CHANNEL, kFTM_CenterAlignedPwm, speed);
-	FTM_UpdatePwmDutycycle(MD_FTM_BASEADDR, MB_IN2_FTM_CHANNEL, kFTM_CenterAlignedPwm, ZERO_DC);
- #else
-	FTM_UpdatePwmDutycycle(MD_FTM_BASEADDR, MB_IN1_FTM_CHANNEL, kFTM_CenterAlignedPwm, ZERO_DC);
-	FTM_UpdatePwmDutycycle(MD_FTM_BASEADDR, MB_IN2_FTM_CHANNEL, kFTM_CenterAlignedPwm, speed);
- #endif
+	// Motor 1
+	FTM_UpdatePwmDutycycle(MD_FTM_BASEADDR, MA_IN1_FTM_CHANNEL, pwm_mode, dutycycle_ma_in1);
+	FTM_UpdatePwmDutycycle(MD_FTM_BASEADDR, MA_IN2_FTM_CHANNEL, pwm_mode, dutycycle_ma_in2);
+	// Motor 2
+	FTM_UpdatePwmDutycycle(MD_FTM_BASEADDR, MB_IN1_FTM_CHANNEL, pwm_mode, dutycycle_mb_in1);
+	FTM_UpdatePwmDutycycle(MD_FTM_BASEADDR, MB_IN2_FTM_CHANNEL, pwm_mode, dutycycle_mb_in2);
 
 	/* Software trigger to update registers */
 	FTM_SetSoftwareTrigger(MD_FTM_BASEADDR, true);
@@ -115,6 +123,27 @@ void Motors::set_speed(int8_t speed) {
 	FTM_UpdateChnlEdgeLevelSelect(MD_FTM_BASEADDR, MB_IN1_FTM_CHANNEL, pwm_level);
 	FTM_UpdateChnlEdgeLevelSelect(MD_FTM_BASEADDR, MB_IN2_FTM_CHANNEL, pwm_level);
 	FTM_UpdateChnlEdgeLevelSelect(MD_FTM_BASEADDR, MA_IN2_FTM_CHANNEL, pwm_level);
+}
+
+void Motors::set_dutycycle_from_speed(uint8_t ma_in1,
+									  uint8_t ma_in2,
+									  uint8_t mb_in1,
+									  uint8_t mb_in2) {
+#if MA_direction
+		dutycycle_ma_in1 = ma_in1;
+		dutycycle_ma_in2 = ma_in2;
+#else
+		dutycycle_ma_in1 = ma_in2;
+		dutycycle_ma_in2 = ma_in1;
+#endif
+
+#if MB_direction
+		dutycycle_mb_in1 = mb_in1;
+		dutycycle_mb_in2 = mb_in2;
+#else
+		dutycycle_mb_in1 = mb_in2;
+		dutycycle_mb_in2 = mb_in1;
+#endif
 }
 
 
